@@ -1,0 +1,481 @@
+import tkinter as tk
+import tkinter.ttk as ttk
+import mysql.connector
+from tkinter import *
+from tkinter.ttk import Combobox
+from tkinter import messagebox
+from mysql.connector import Error
+
+def login():
+    username = entry_username.get()
+    passwordd = entry_password.get()
+
+    # Подключение к базе данных
+    try:
+        connection = mysql.connector.connect(
+            host='127.0.0.1',
+            user= username,
+            password= passwordd,
+            port=8889,
+            database='bd_kryzhanovskaya'
+        )
+        
+        if connection.is_connected():
+            print('Успешное подключение к базе данных')
+
+            # Создание нового окна с выбором таблиц
+            root.destroy()
+            if username == 'root' and passwordd == 'root':
+                select_table_window(connection)
+            elif username == 'user' and passwordd == 'user':
+                order_table_window(connection)
+            else:
+                messagebox.showinfo("Ошибка", "Такого пользователя не существует.")
+
+
+    except mysql.connector.Error as error:
+        messagebox.showinfo("Ошибка", "Такого пользователя не существует.")
+        print('Ошибка подключения к базе данных:', error)
+        
+
+      
+# Функция для выполнения запроса на выборку данных из таблицы
+def execute_query(connection):
+    try:
+        cursor = connection.cursor()
+        query = f"SELECT u.last_name, u.first_name, u.phone_number, o.price, o.weight, o.quantity, s.name_of_product FROM users u INNER JOIN orders o ON u.user_id = o.user_id INNER JOIN structure s ON s.structure_id = o.structure_id"
+        cursor.execute(query)
+        data = cursor.fetchall()
+        return data
+    except mysql.connector.Error as error:
+            print('Ошибка при получении данных из таблицы с учетом фильтра:', error)
+            
+            
+def order_table_window(connection):
+    root3 = tk.Tk()
+    root3.title('Просмотр заказов')
+    root3.configure(bg='#000040')
+    root3.geometry('400x200')
+    
+    df_enter = tk.Label(root3, text='\n', bg='#000040')
+    df_enter.pack()
+
+    button_view_orders = tk.Button(root3, text="Просмотреть заказы", command=lambda: show_data(execute_query(connection)))
+    button_view_orders.pack()
+    
+        # Функция для отображения данных в новом окне в виде таблицы
+    def show_data(data):
+        window = tk.Tk()
+        window.title("Результаты запроса")
+        
+        treeview = ttk.Treeview(window)
+    
+        # Add columns
+        treeview["columns"] = ("last_name", "first_name", "phone_number", "price", "weight", "quantity", "name_of_product")
+        treeview.column("#0", width=0, stretch=NO)
+        treeview.column("last_name", anchor=CENTER, width=100)
+        treeview.column("first_name", anchor=CENTER, width=100)
+        treeview.column("phone_number", anchor=CENTER, width=120)
+        treeview.column("price", anchor=CENTER, width=80)
+        treeview.column("weight", anchor=CENTER, width=80)
+        treeview.column("quantity", anchor=CENTER, width=80)
+        treeview.column("name_of_product", anchor=CENTER, width=120)
+    
+        # Add headers
+        treeview.heading("#0", text="", anchor=CENTER)
+        treeview.heading("last_name", text="Last Name", anchor=CENTER)
+        treeview.heading("first_name", text="First Name", anchor=CENTER)
+        treeview.heading("phone_number", text="Phone Number", anchor=CENTER)
+        treeview.heading("price", text="Price", anchor=CENTER)
+        treeview.heading("weight", text="Weight", anchor=CENTER)
+        treeview.heading("quantity", text="Quantity", anchor=CENTER)
+        treeview.heading("name_of_product", text="Product Name", anchor=CENTER)
+    
+        # Add data rows
+        for row in data:
+            treeview.insert("", END, values=row)
+    
+        treeview.pack(fill=BOTH, expand=True)
+    
+        window.mainloop()
+        
+    root3.mainloop()
+
+
+def select_table_window(connection):
+    table_names = ['address', 'deliver', 'orders', 'service_price', 'size', 'status', 'structure', 'task', 'users', 'warehouse']
+
+    root2 = tk.Tk()
+    root2.title('Выбор таблицы')
+    root2.configure(bg='#6B8FD4')
+    root2.geometry('1000x500')
+
+    label = tk.Label(root2, text='Выберите таблицу:', bg='#6B8FD4')
+    label.pack()
+
+    table_var = tk.StringVar()
+    table_var.set(table_names[0])
+
+    table_dropdown = tk.OptionMenu(root2, table_var, *table_names)
+    table_dropdown.pack()
+
+    treeview = ttk.Treeview(root2)
+    treeview.pack()
+
+    filter_frame = tk.Frame(root2)
+    filter_frame.pack()
+
+    filter_column_label = tk.Label(filter_frame, text='Столбец:', bg='#6B8FD4')
+    filter_column_label.pack(side=tk.LEFT)
+
+    filter_column_var = tk.StringVar()
+    filter_column_dropdown = ttk.Combobox(filter_frame, textvariable=filter_column_var)
+    filter_column_dropdown.pack(side=tk.LEFT)
+
+    filter_value_label = tk.Label(filter_frame, text='Значение:', bg='#6B8FD4')
+    filter_value_label.pack(side=tk.LEFT)
+
+    filter_value_entry = tk.Entry(filter_frame)
+    filter_value_entry.pack(side=tk.LEFT)
+
+    def select_table():
+        selected_table = table_var.get()
+        print('Выбранная таблица:', selected_table)
+
+        # Получение данных из выбранной таблицы
+        try:
+            cursor = connection.cursor()
+            query = f"SELECT * FROM {selected_table}"
+            cursor.execute(query)
+            result = cursor.fetchall()
+
+            # Очистка таблицы
+            treeview.delete(*treeview.get_children())
+
+            # Вывод заголовков таблицы
+            columns = [desc[0] for desc in cursor.description]
+            treeview["columns"] = columns
+            for column in columns:
+                treeview.heading(column, text=column)
+
+            # Вывод данных в таблицу
+            for row in result:
+                treeview.insert("", tk.END, values=row)
+
+        except mysql.connector.Error as error:
+            print('Ошибка при получении данных из таблицы:', error)
+            
+
+    def apply_filter():
+        selected_table = table_var.get()
+        selected_column = filter_column_var.get()
+        filter_value = filter_value_entry.get()
+
+        # Получение данных из выбранной таблицы с учетом фильтра
+        try:
+            cursor = connection.cursor()
+            query = f"SELECT * FROM {selected_table} WHERE {selected_column} = '{filter_value}'"
+            cursor.execute(query)
+            result = cursor.fetchall()
+
+            # Очистка таблицы
+            treeview.delete(*treeview.get_children())
+
+            # Вывод заголовков таблицы
+            columns = [desc[0] for desc in cursor.description]
+            treeview["columns"] = columns
+            for column in columns:
+                treeview.heading(column, text=column)
+
+            # Вывод данных в таблицу
+            for row in result:
+                treeview.insert("", tk.END, values=row)
+
+        except mysql.connector.Error as error:
+            print('Ошибка при получении данных из таблицы с учетом фильтра:', error)
+
+    def open_edit_window():
+        selected_table = table_var.get()
+
+        edit_window = tk.Toplevel(root2)
+        edit_window.title('Изменение данных')
+        edit_window.configure(bg='#6B8FD4')
+        edit_window.geometry('200x200')
+        
+        js3_enter = tk.Label(edit_window, text='\n', bg='#6B8FD4')
+        js3_enter.pack()
+
+
+        def add_row(connection):
+            # Открытие окна для добавления строки
+            add_window = tk.Toplevel(edit_window)
+            add_window.title('Добавление строки')
+            add_window.configure(bg='#6B8FD4')
+            add_window.geometry('300x200')
+            
+
+            # Создание полей ввода для каждого столбца таблицы
+            columns = get_columns(connection, selected_table)
+            entry_list = []
+            for i, column in enumerate(columns):
+                label = tk.Label(add_window, text=column)
+                label.grid(row=i, column=0)
+                entry = tk.Entry(add_window)
+                entry.grid(row=i, column=1)
+                entry_list.append(entry)
+
+            def save_row():
+                values = [entry.get() for entry in entry_list]
+
+                try:
+                    cursor = connection.cursor()
+                    query = f"INSERT INTO {selected_table} VALUES ({', '.join(['%s'] * len(values))})"
+                    cursor.execute(query, values)
+                    connection.commit()
+                    print('Строка успешно добавлена')
+
+                    # Обновление данных в таблице
+                    select_table()
+
+                except mysql.connector.Error as error:
+                    print('Ошибка при добавлении строки:', error)
+
+                add_window.destroy()
+
+            button_save = tk.Button(add_window, text='Сохранить', command=save_row)
+            button_save.grid(row=len(columns), column=0, columnspan=2)
+
+        def delete_row(connection):
+            selected_table = table_var.get()
+            # Открытие окна для удаления строки
+            delete_window = tk.Toplevel(edit_window)
+            delete_window.title('Удаление строки')
+            delete_window.configure(bg='#6B8FD4')
+            delete_window.geometry('300x150')
+        
+            row_id_label = tk.Label(delete_window, text='Введите название поля primary key:', bg='#6B8FD4')
+            row_id_label.pack()
+        
+            row_id_entry = tk.Entry(delete_window)
+            row_id_entry.pack()
+        
+            delete_value_label = tk.Label(delete_window, text='Введите значение для удаления:', bg='#6B8FD4')
+            delete_value_label.pack()
+        
+            delete_value_entry = tk.Entry(delete_window)
+            delete_value_entry.pack()
+        
+            def confirm_delete():
+                row_id = row_id_entry.get()
+                delete_value = delete_value_entry.get()
+        
+                # Проверка, что значения введены
+                if not row_id or not delete_value:
+                    print('Введите название поля primary key и значение для удаления')
+                    return
+        
+                try:
+                    cursor = connection.cursor()
+        
+                    # Проверка, существует ли строка с указанным row_id и значением для удаления
+                    query_check = f"SELECT COUNT(*) FROM {selected_table} WHERE {row_id} = '{delete_value}'"
+                    cursor.execute(query_check)
+                    result = cursor.fetchone()
+                    if result[0] == 0:
+                        print('Строка с указанным primary key и значением не существует')
+                        return
+        
+                    # Выполнение запроса DELETE
+                    query_delete = f"DELETE FROM {selected_table} WHERE {row_id} = '{delete_value}'"
+                    cursor.execute(query_delete)
+                    connection.commit()
+                    print('Строка успешно удалена')
+        
+                    # Обновление данных в таблице
+                    select_table()
+        
+                except mysql.connector.Error as error:
+                    print('Ошибка при удалении строки:', error)
+        
+                delete_window.destroy()
+        
+            button_confirm = tk.Button(delete_window, text='Удалить', command=confirm_delete)
+            button_confirm.pack()
+            
+        def edit_row(connection):
+            # Открытие окна для ввода row_id
+            row_id_window = tk.Toplevel(edit_window)
+            row_id_window.title('Ввод id таблицы')
+            row_id_window.configure(bg='#6B8FD4')
+            row_id_window.geometry('400x300')
+        
+            row_id_label = tk.Label(row_id_window, text='Введите название поля primary key:', bg='#6B8FD4')
+            row_id_label.pack()
+        
+            row_id_entry = tk.Entry(row_id_window)
+            row_id_entry.pack()
+        
+            edit_value_label = tk.Label(row_id_window, text='Введите номер строки для изменения:', bg='#6B8FD4')
+            edit_value_label.pack()
+        
+            edit_value_entry = tk.Entry(row_id_window)
+            edit_value_entry.pack()
+        
+            def open_edit_window():
+                row_id = row_id_entry.get()
+                edit_value = edit_value_entry.get()
+                row_id_window.destroy()
+            
+                # Открытие окна для редактирования строки
+                edit_window_one = tk.Toplevel()
+                edit_window_one.title('Редактирование строки')
+                edit_window_one.geometry('400x300')
+            
+                cursor = connection.cursor()
+                query = f"SELECT * FROM {selected_table} WHERE {row_id} = '{edit_value}'"
+                cursor.execute(query)
+                row = cursor.fetchone()
+            
+                if row:
+                    # Получение списка столбцов
+                    columns = get_columns(connection, selected_table)
+                    entry_list = []
+                    for i, column in enumerate(columns):
+                        label = tk.Label(edit_window_one, text=column)
+                        label.grid(row=i, column=0)
+                        entry = tk.Entry(edit_window_one)
+                        entry.grid(row=i, column=1)
+                        entry.insert(0, row[i])
+                        entry_list.append(entry)
+                else:
+                    print('Строка с указанным row_id не найдена')
+
+                def save_row():
+                    values = [entry.get() for entry in entry_list]
+        
+                    query = f"UPDATE {selected_table} SET "
+                    set_values = ", ".join([f"{column} = %s" for column in columns])
+                    query += set_values + f" WHERE {row_id} = %s"
+                    
+                    try:
+                        cursor = connection.cursor()
+                        cursor.execute(query, values + [edit_value])
+                        connection.commit()
+                        print('Строка успешно изменена')
+                        
+                        # Обновление данных в таблице
+                        select_table()
+                        
+                    except mysql.connector.Error as error:
+                        print('Ошибка при изменении строки:', error)
+                        
+                    edit_window_one.destroy()
+        
+                button_save = tk.Button(edit_window_one, text='Сохранить', command=save_row)
+                button_save.grid(row=len(columns), column=0, columnspan=2)
+        
+            button_edit = tk.Button(row_id_window, text='Изменить', command=open_edit_window)
+            button_edit.pack()
+    
+        button_add_row = tk.Button(edit_window, text='Добавить строку', command=lambda: add_row(connection))
+        button_add_row.pack()
+        
+        button_edit = tk.Button(edit_window, text='Редактировать строку', command=lambda: edit_row(connection))
+        button_edit.pack()
+        
+        button_delete_row = tk.Button(edit_window, text='Удалить строку', command=lambda: delete_row(connection))
+        button_delete_row.pack()
+        
+        
+
+    js_enter = tk.Label(root2, text='\n', bg='#6B8FD4')
+    js_enter.pack()
+    
+    button_select = tk.Button(root2, text='Выбрать', command=select_table)
+    button_select.pack()
+
+    button_filter = tk.Button(root2, text='Применить фильтр', command=apply_filter)
+    button_filter.pack()
+
+    button_edit_data = tk.Button(root2, text='Изменить данные', command=open_edit_window)
+    button_edit_data.pack()
+
+    button_view_orders = tk.Button(root2, text="Просмотреть заказы", command=lambda: show_data(execute_query(connection)))
+    button_view_orders.pack()
+    
+    # Функция для отображения данных в новом окне в виде таблицы
+    def show_data(data):
+        window = tk.Tk()
+        window.title("Результаты запроса")
+        window.configure(bg='#000029')
+        
+        treeview = ttk.Treeview(window)
+    
+        # Add columns
+        treeview["columns"] = ("last_name", "first_name", "phone_number", "price", "weight", "quantity", "name_of_product")
+        treeview.column("#0", width=0, stretch=NO)
+        treeview.column("last_name", anchor=CENTER, width=100)
+        treeview.column("first_name", anchor=CENTER, width=100)
+        treeview.column("phone_number", anchor=CENTER, width=120)
+        treeview.column("price", anchor=CENTER, width=80)
+        treeview.column("weight", anchor=CENTER, width=80)
+        treeview.column("quantity", anchor=CENTER, width=80)
+        treeview.column("name_of_product", anchor=CENTER, width=120)
+    
+        # Add headers
+        treeview.heading("#0", text="", anchor=CENTER)
+        treeview.heading("last_name", text="Last Name", anchor=CENTER)
+        treeview.heading("first_name", text="First Name", anchor=CENTER)
+        treeview.heading("phone_number", text="Phone Number", anchor=CENTER)
+        treeview.heading("price", text="Price", anchor=CENTER)
+        treeview.heading("weight", text="Weight", anchor=CENTER)
+        treeview.heading("quantity", text="Quantity", anchor=CENTER)
+        treeview.heading("name_of_product", text="Product Name", anchor=CENTER)
+    
+        # Add data rows
+        for row in data:
+            treeview.insert("", END, values=row)
+    
+        treeview.pack(fill=BOTH, expand=True)
+    
+        window.mainloop()
+
+    root2.mainloop()
+
+def get_columns(connection, table_name):
+    try:
+        cursor = connection.cursor()
+        query = f"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{table_name}'"
+        cursor.execute(query)
+        result = cursor.fetchall()
+        columns = [row[0] for row in result]
+        return columns
+
+    except mysql.connector.Error as error:
+        print('Ошибка при получении списка столбцов:', error)
+
+# Создание окна для входа в систему
+root = tk.Tk()
+root.title('Вход в систему')
+root.configure(bg='#6B8FD4')
+root.geometry('400x300')
+
+label_enter = tk.Label(root, text='Добро пожаловать!\n', bg='#6B8FD4')
+label_enter.pack()
+
+label_username = tk.Label(root, text='Имя пользователя:', bg='#6B8FD4')
+label_username.pack()
+
+entry_username = tk.Entry(root)
+entry_username.pack()
+
+label_password = tk.Label(root, text='Пароль:', bg='#6B8FD4')
+label_password.pack()
+
+entry_password = tk.Entry(root, show='*')
+entry_password.pack()
+
+button_login = tk.Button(root, text='Войти', bg='#6B8FD4', command=login)
+button_login.pack()
+
+root.mainloop()
